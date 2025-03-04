@@ -10,6 +10,7 @@ from minions.clients.together import TogetherClient
 from minions.clients.perplexity import PerplexityAIClient
 from minions.clients.openrouter import OpenRouterClient
 from minions.clients.groq import GroqClient
+from minions.clients.deepseek import DeepSeekClient
 
 import os
 import time
@@ -42,11 +43,19 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# OpenAI model pricing per 1M tokens
-OPENAI_PRICES = {
-    "gpt-4o": {"input": 2.50, "cached_input": 1.25, "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60},
-    "o3-mini": {"input": 1.10, "cached_input": 0.55, "output": 4.40},
+PRICING_INFO = {
+    # OpenAI model pricing per 1M tokens
+    "OpenAI": {
+        "gpt-4o": {"input": 2.50, "cached_input": 1.25, "output": 10.00},
+        "gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60},
+        "o3-mini": {"input": 1.10, "cached_input": 0.55, "output": 4.40},
+    },
+    # DeepSeek model pricing per 1M tokens
+    "DeepSeek": {
+        # let's assume 1 dollar = 7.25 RMB and the price is the standard time price 
+        "deepseek-chat": {"input": 0.276, "cached_input": 0.069, "output": 1.103},
+        "deepseek-reasoner": {"input": 0.552, "cached_input": 0.138, "output": 2.206},
+    },
 }
 
 PROVIDER_TO_ENV_VAR_KEY = {
@@ -56,6 +65,7 @@ PROVIDER_TO_ENV_VAR_KEY = {
     "Together": "TOGETHER_API_KEY",
     "Perplexity": "PERPLEXITY_API_KEY",
     "Groq": "GROQ_API_KEY",
+    "DeepSeek": "DEEPSEEK_API_KEY",
 }
 
 
@@ -369,6 +379,13 @@ def initialize_clients(
             max_tokens=int(remote_max_tokens),
             api_key=api_key,
         )
+    elif provider == "DeepSeek":
+        st.session_state.remote_client = DeepSeekClient(
+            model_name=remote_model_name,
+            temperature=remote_temperature,
+            max_tokens=int(remote_max_tokens),
+            api_key=api_key,
+        )
     else:  # OpenAI
         st.session_state.remote_client = OpenAIClient(
             model_name=remote_model_name,
@@ -575,8 +592,19 @@ def validate_groq_key(api_key):
     except Exception as e:
         return False, str(e)
 
-
-# validate
+def validate_deepseek_key(api_key):
+    try:
+        client = DeepSeekClient(
+            model_name="deepseek-chat", api_key=api_key, temperature=1.0
+        )
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Say yes"},
+        ]
+        client.chat(messages)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 
 # ---------------------------
@@ -588,10 +616,10 @@ with st.sidebar:
     provider_col, key_col = st.columns([1, 2])
     with provider_col:
         # Make sure OpenRouter is in the list and properly displayed
-        providers = ["OpenAI", "OpenRouter", "Together", "Perplexity", "Anthropic", "Groq"]
+        providers = ["OpenAI", "OpenRouter", "Together", "Perplexity", "Anthropic", "Groq","DeepSeek"]
         selected_provider = st.selectbox(
             "Select LLM provider",
-            options=["OpenAI", "OpenRouter", "Together", "Perplexity", "Anthropic", "Groq"],
+            options=["OpenAI", "OpenRouter", "Together", "Perplexity", "Anthropic", "Groq","DeepSeek"],
             index=0,
         )  # Set OpenAI as default (index 0)
 
@@ -619,6 +647,8 @@ with st.sidebar:
             is_valid, msg = validate_perplexity_key(api_key)
         elif selected_provider == "Groq":
             is_valid, msg = validate_groq_key(api_key)
+        elif selected_provider == "DeepSeek":
+            is_valid, msg = validate_deepseek_key(api_key)
         else:
             raise ValueError(f"Invalid provider: {selected_provider}")
 
@@ -637,7 +667,7 @@ with st.sidebar:
     # Protocol selection
     st.subheader("Protocol")
 
-    if selected_provider in ["OpenAI", "Together", "OpenRouter"]:
+    if selected_provider in ["OpenAI", "Together", "OpenRouter", "DeepSeek"]:
         protocol_options = ["Minion", "Minions", "Minions-MCP"]
         protocol = st.segmented_control(
             "Communication protocol", options=protocol_options, default="Minion"
@@ -801,6 +831,11 @@ with st.sidebar:
                 "llama-3.3-70b-specdec": "llama-3.3-70b-specdec",
                 "deepseek-r1-distill-llama-70b-specdec": "deepseek-r1-distill-llama-70b-specdec",
                 "qwen-2.5-32b": "qwen-2.5-32b",
+            }
+            default_model_index = 0
+        elif selected_provider == "DeepSeek":
+            model_mapping = {
+                "deepseek-chat (Recommended)": "deepseek-chat",
             }
             default_model_index = 0
         else:
@@ -1042,10 +1077,10 @@ if user_query:
                 )
                 st.bar_chart(df, x="Model", y="Count", color="Token Type")
 
-                # Display cost information for OpenAI models
-                if selected_provider == "OpenAI" and remote_model_name in OPENAI_PRICES:
+                # Display cost information for OpenAI models and DeepSeek models
+                if selected_provider in ["OpenAI", "DeepSeek"] and remote_model_name in PRICING_INFO[selected_provider]:
                     st.header("Remote Model Cost")
-                    pricing = OPENAI_PRICES[remote_model_name]
+                    pricing = PRICING_INFO[selected_provider][remote_model_name]
                     prompt_cost = (
                         output["remote_usage"].prompt_tokens / 1_000_000
                     ) * pricing["input"]

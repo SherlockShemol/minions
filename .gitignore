@@ -43,4 +43,7 @@ data/
 .DS_Store
 .coverage
 htmlcov/
-.pytest_cache/ 
+.pytest_cache/
+
+# python virtual environment
+myenv/  
