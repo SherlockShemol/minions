@@ -109,10 +109,10 @@ class Minion:
 
         # Initialize the log structure
         conversation_log = {
-            "TASK": task,
-            "CONTEXT": context,
-            "Conversation": [],
-            "Generated_final_answer": "",
+            "task": task,
+            "context": context,
+            "conversation": [],
+            "generated_final_answer": "",
         }
 
         # Initialize message histories and usage tracking
@@ -124,7 +124,7 @@ class Minion:
         ]
 
         # Add initial supervisor prompt to conversation log
-        conversation_log["Conversation"].append(
+        conversation_log["conversation"].append(
             {
                 "user": "remote",
                 "prompt": SUPERVISOR_INITIAL_PROMPT.format(task=task),
@@ -229,7 +229,7 @@ class Minion:
         )
 
         # Update the last conversation entry with the ouput
-        conversation_log["Conversation"][-1]["output"] = supervisor_response[0]
+        conversation_log["conversation"][-1]["output"] = supervisor_response[0]
 
         if self.callback:
             self.callback("supervisor", supervisor_messages[-1])
@@ -242,7 +242,7 @@ class Minion:
         worker_messages.append({"role": "user", "content": supervisor_json["message"]})
 
         # Add worker prompt to conversation log
-        conversation_log["Conversation"].append(
+        conversation_log["conversation"].append(
             {"user": "local", "prompt": supervisor_json["message"], "output": None}
         )
 
@@ -260,14 +260,6 @@ class Minion:
 
             print("worker_response: ", worker_response[0])
             local_usage += worker_usage
-
-            worker_messages.append({"role": "assistant", "content": worker_response[0]})
-
-            # Update the last conversation entry with the output
-            conversation_log["Conversation"][-1]["output"] = worker_response[0]
-
-            if self.callback:
-                self.callback("worker", worker_messages[-1])
 
             if is_privacy:
                 if self.callback:
@@ -290,7 +282,7 @@ class Minion:
                     {"role": "assistant", "content": worker_response[0]}
                 )
                 # Update the last conversation entry with the output
-                conversation_log["Conversation"][-1]["output"] = worker_response[0]
+                conversation_log["conversation"][-1]["output"] = worker_response[0]
 
                 if self.callback:
                     output = f"""**_My output (post-privacy shield):_**
@@ -304,7 +296,7 @@ class Minion:
                 )
 
                 # Update the last conversation entry with the output
-                conversation_log["Conversation"][-1]["output"] = worker_response[0]
+                conversation_log["conversation"][-1]["output"] = worker_response[0]
 
                 if self.callback:
                     self.callback("worker", worker_messages[-1])
@@ -316,7 +308,7 @@ class Minion:
                 )
 
                 # Add supervisor final prompt to conversation log
-                conversation_log["Conversation"].append(
+                conversation_log["conversation"].append(
                     {"user": "remote", "prompt": supervisor_prompt, "output": None}
                 )
             else:
@@ -324,7 +316,7 @@ class Minion:
                 cot_prompt = REMOTE_SYNTHESIS_COT.format(response=worker_response[0])
 
                 # Add supervisor COT prompt to conversation log
-                conversation_log["Conversation"].append(
+                conversation_log["conversation"].append(
                     {"user": "remote", "prompt": cot_prompt, "output": None}
                 )
 
@@ -335,15 +327,13 @@ class Minion:
                 )
 
                 remote_usage += usage
-                if self.callback:
-                    self.callback("supervisor", None, is_final=False)
 
                 supervisor_messages.append(
                     {"role": "assistant", "content": step_by_step_response[0]}
                 )
 
                 # Update the last conversation entry with the output
-                conversation_log["Conversation"][-1]["output"] = step_by_step_response[
+                conversation_log["conversation"][-1]["output"] = step_by_step_response[
                     0
                 ]
 
@@ -353,7 +343,7 @@ class Minion:
                 )
 
                 # Add supervisor synthesis prompt to conversation log
-                conversation_log["Conversation"].append(
+                conversation_log["conversation"].append(
                     {"user": "remote", "prompt": supervisor_prompt, "output": None}
                 )
 
@@ -380,30 +370,31 @@ class Minion:
             if self.callback:
                 self.callback("supervisor", supervisor_messages[-1])
 
-            conversation_log["Conversation"][-1]["output"] = supervisor_response[0]
+            conversation_log["conversation"][-1]["output"] = supervisor_response[0]
 
             # Parse supervisor's decision
             if isinstance(self.remote_client, (OpenAIClient, TogetherClient)):
                 supervisor_json = json.loads(supervisor_response[0])
             else:
                 supervisor_json = _extract_json(supervisor_response[0])
+
             print("Supervisor_json:", supervisor_json)
             if supervisor_json["decision"] == "provide_final_answer":
                 final_answer = supervisor_json["answer"]
-                conversation_log["Generated_final_answer"] = final_answer
+                conversation_log["generated_final_answer"] = final_answer
                 break
             else:
                 next_question = supervisor_json["message"]
                 worker_messages.append({"role": "user", "content": next_question})
 
                 # Add next worker prompt to conversation log
-                conversation_log["Conversation"].append(
+                conversation_log["conversation"].append(
                     {"user": "local", "prompt": next_question, "output": None}
                 )
 
         if final_answer is None:
             final_answer = "No answer found."
-            conversation_log["Generated_final_answer"] = final_answer
+            conversation_log["generated_final_answer"] = final_answer
 
         # Log the final result
         if logging_id:
